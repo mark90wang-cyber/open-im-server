@@ -368,6 +368,7 @@ type Aws struct {
 	SecretAccessKey string `yaml:"secretAccessKey"`
 	SessionToken    string `yaml:"sessionToken"`
 	PublicRead      bool   `yaml:"publicRead"`
+	CloudFrontURL   string `yaml:"cloudFrontURL"`
 }
 
 type User struct {
@@ -671,6 +672,7 @@ func (o *Aws) Build() *aws.Config {
 		AccessKeyID:     o.AccessKeyID,
 		SecretAccessKey: o.SecretAccessKey,
 		SessionToken:    o.SessionToken,
+		CloudFrontURL:   o.CloudFrontURL,
 	}
 }
 
