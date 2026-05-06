@@ -73,6 +73,7 @@ func newContentTypeConf(conf *config.Notification) map[int32]config.Notification
 		constant.ConversationChangeNotification:      conf.ConversationChanged,
 		constant.ConversationUnreadNotification:      conf.ConversationChanged,
 		constant.ConversationPrivateChatNotification: conf.ConversationSetPrivate,
+		constant.BusinessNotification:                conf.BusinessNotification,
 		// msg
 		constant.MsgRevokeNotification:  {IsSendMsg: false, ReliabilityLevel: constant.ReliableNotificationNoMsg},
 		constant.HasReadReceipt:         {IsSendMsg: false, ReliabilityLevel: constant.ReliableNotificationNoMsg},
@@ -121,6 +122,7 @@ func newSessionTypeConf() map[int32]int32 {
 		constant.ConversationChangeNotification:      constant.SingleChatType,
 		constant.ConversationUnreadNotification:      constant.SingleChatType,
 		constant.ConversationPrivateChatNotification: constant.SingleChatType,
+		constant.BusinessNotification:                constant.NotificationChatType,
 		// delete
 		constant.DeleteMsgsNotification: constant.SingleChatType,
 	}

@@ -217,6 +217,7 @@ type Notification struct {
 	UserStatusChanged         NotificationConfig `yaml:"userStatusChanged"`
 	ConversationChanged       NotificationConfig `yaml:"conversationChanged"`
 	ConversationSetPrivate    NotificationConfig `yaml:"conversationSetPrivate"`
+	BusinessNotification      NotificationConfig `yaml:"businessNotification"`
 }
 
 type Prometheus struct {
@@ -755,6 +756,9 @@ func InitNotification(notification *Notification) {
 	notification.ConversationChanged.ReliabilityLevel = 1
 	notification.ConversationSetPrivate.UnreadCount = false
 	notification.ConversationSetPrivate.ReliabilityLevel = 1
+	notification.BusinessNotification.IsSendMsg = true
+	notification.BusinessNotification.UnreadCount = true
+	notification.BusinessNotification.ReliabilityLevel = 1
 }
 
 type AllConfig struct {

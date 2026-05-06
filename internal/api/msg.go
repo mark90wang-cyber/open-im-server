@@ -26,8 +26,9 @@ import (
 
 	"github.com/openimsdk/open-im-server/v3/pkg/apistruct"
 	"github.com/openimsdk/open-im-server/v3/pkg/authverify"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/open-im-server/v3/pkg/businessnotification"
 	"github.com/openimsdk/open-im-server/v3/pkg/common/webhook"
+	"github.com/openimsdk/open-im-server/v3/pkg/msgprocessor"
 	"github.com/openimsdk/open-im-server/v3/pkg/rpcli"
 	"github.com/openimsdk/protocol/constant"
 	"github.com/openimsdk/protocol/msg"
@@ -36,7 +37,6 @@ import (
 	"github.com/openimsdk/tools/apiresp"
 	"github.com/openimsdk/tools/errs"
 	"github.com/openimsdk/tools/log"
-	"github.com/openimsdk/tools/mcontext"
 	"github.com/openimsdk/tools/utils/datautil"
 	"github.com/openimsdk/tools/utils/idutil"
 	"github.com/openimsdk/tools/utils/jsonutil"
@@ -334,13 +334,29 @@ func (m *MessageApi) SendMessage(c *gin.Context) {
 
 func (m *MessageApi) SendBusinessNotification(c *gin.Context) {
 	req := struct {
-		Key              string `json:"key"`
-		Data             string `json:"data"`
-		SendUserID       string `json:"sendUserID" binding:"required"`
-		RecvUserID       string `json:"recvUserID"`
-		RecvGroupID      string `json:"recvGroupID"`
-		SendMsg          bool   `json:"sendMsg"`
-		ReliabilityLevel *int   `json:"reliabilityLevel"`
+		Key              string                 `json:"key"`
+		Data             string                 `json:"data"`
+		SendUserID       string                 `json:"sendUserID"`
+		RecvUserID       string                 `json:"recvUserID"`
+		RecvGroupID      string                 `json:"recvGroupID"`
+		SendMsg          *bool                  `json:"sendMsg"`
+		ReliabilityLevel *int                   `json:"reliabilityLevel"`
+		BusinessType     string                 `json:"businessType"`
+		Channel          string                 `json:"channel"`
+		SubType          string                 `json:"subType"`
+		EntityID         string                 `json:"entityId"`
+		ActorUserID      string                 `json:"actorUserId"`
+		Title            string                 `json:"title"`
+		Summary          string                 `json:"summary"`
+		Route            string                 `json:"route"`
+		CreatedAt        int64                  `json:"createdAt"`
+		DedupeKey        string                 `json:"dedupeKey"`
+		PayloadData      map[string]any         `json:"payloadData"`
+		CountUnread      *bool                  `json:"countUnread"`
+		OfflinePush      *bool                  `json:"offlinePush"`
+		SenderNickname   string                 `json:"senderNickname"`
+		SenderFaceURL    string                 `json:"senderFaceURL"`
+		OfflinePushInfo  *sdkws.OfflinePushInfo `json:"offlinePushInfo"`
 	}{}
 	if err := c.BindJSON(&req); err != nil {
 		apiresp.GinError(c, errs.ErrArgs.WithDetail(err.Error()).Wrap())
@@ -354,40 +370,124 @@ func (m *MessageApi) SendBusinessNotification(c *gin.Context) {
 		apiresp.GinError(c, errs.ErrArgs.WrapMsg("recvUserID and recvGroupID cannot be set at the same time"))
 		return
 	}
-	var sessionType int32
-	if req.RecvUserID != "" {
-		sessionType = constant.SingleChatType
-	} else {
-		sessionType = constant.ReadGroupChatType
-	}
-	if req.ReliabilityLevel == nil {
-		req.ReliabilityLevel = datautil.ToPtr(1)
-	}
 	if !authverify.IsAdmin(c) {
 		apiresp.GinError(c, errs.ErrNoPermission.WrapMsg("only app manager can send message"))
 		return
 	}
+
+	businessType := req.BusinessType
+	if businessType == "" {
+		businessType = req.Channel
+	}
+	if businessType == "" {
+		businessType = string(businessnotification.ChannelSystem)
+	}
+	payloadData := req.PayloadData
+	if payloadData == nil && (req.Key != "" || req.Data != "") {
+		payloadData = map[string]any{
+			"key":  req.Key,
+			"data": req.Data,
+		}
+	}
+	title := req.Title
+	if title == "" {
+		title = businessType
+	}
+	summary := req.Summary
+	if summary == "" {
+		summary = req.Data
+	}
+	if summary == "" {
+		summary = req.Key
+	}
+	payload, err := businessnotification.NormalizePayload(businessnotification.Payload{
+		BusinessType: businessType,
+		SubType:      req.SubType,
+		EntityID:     req.EntityID,
+		ActorUserID:  req.ActorUserID,
+		Title:        title,
+		Summary:      summary,
+		Route:        req.Route,
+		CreatedAt:    req.CreatedAt,
+		DedupeKey:    req.DedupeKey,
+		Data:         payloadData,
+	})
+	if err != nil {
+		apiresp.GinError(c, errs.ErrArgs.WrapMsg(err.Error()))
+		return
+	}
+	if req.SendUserID == "" {
+		req.SendUserID = businessnotification.DefaultSenderID(businessnotification.Channel(payload.BusinessType))
+	}
+	if req.SendUserID == "" {
+		apiresp.GinError(c, errs.ErrArgs.WrapMsg("sendUserID is required when channel has no default sender"))
+		return
+	}
+	sendMsg := true
+	if req.SendMsg != nil {
+		sendMsg = *req.SendMsg
+	}
+	countUnread := true
+	if req.CountUnread != nil {
+		countUnread = *req.CountUnread
+	}
+	offlinePush := true
+	if req.OfflinePush != nil {
+		offlinePush = *req.OfflinePush
+	}
+	detail, err := businessnotification.MarshalEnvelope(payload, businessnotification.Delivery{
+		CountUnread: countUnread,
+		OfflinePush: offlinePush,
+	})
+	if err != nil {
+		apiresp.GinError(c, errs.WrapMsg(err, "failed to marshal business notification payload"))
+		return
+	}
+
+	var sessionType int32
+	if req.RecvUserID != "" {
+		sessionType = constant.NotificationChatType
+	} else {
+		sessionType = constant.ReadGroupChatType
+	}
+	options := msgprocessor.NewOptions()
+	options = msgprocessor.WithOptions(
+		options,
+		msgprocessor.WithSendMsg(sendMsg),
+		msgprocessor.WithHistory(true),
+		msgprocessor.WithPersistent(),
+		msgprocessor.WithUnreadCount(countUnread),
+		msgprocessor.WithOfflinePush(offlinePush),
+	)
+	if req.ReliabilityLevel != nil && *req.ReliabilityLevel == constant.UnreliableNotification {
+		options = msgprocessor.WithOptions(options, msgprocessor.WithHistory(false))
+	}
+	offlinePushInfo := req.OfflinePushInfo
+	if offlinePushInfo == nil {
+		offlinePushInfo = &sdkws.OfflinePushInfo{
+			Title: payload.Title,
+			Desc:  payload.Summary,
+			Ex:    detail,
+		}
+	}
 	sendMsgReq := msg.SendMsgReq{
 		MsgData: &sdkws.MsgData{
-			SendID:  req.SendUserID,
-			RecvID:  req.RecvUserID,
-			GroupID: req.RecvGroupID,
+			SendID:         req.SendUserID,
+			RecvID:         req.RecvUserID,
+			GroupID:        req.RecvGroupID,
+			SenderNickname: req.SenderNickname,
+			SenderFaceURL:  req.SenderFaceURL,
 			Content: []byte(jsonutil.StructToJsonString(&sdkws.NotificationElem{
-				Detail: jsonutil.StructToJsonString(&struct {
-					Key  string `json:"key"`
-					Data string `json:"data"`
-				}{Key: req.Key, Data: req.Data}),
+				Detail: detail,
 			})),
-			MsgFrom:     constant.SysMsgType,
-			ContentType: constant.BusinessNotification,
-			SessionType: sessionType,
-			CreateTime:  timeutil.GetCurrentTimestampByMill(),
-			ClientMsgID: idutil.GetMsgIDByMD5(mcontext.GetOpUserID(c)),
-			Options: config.GetOptionsByNotification(config.NotificationConfig{
-				IsSendMsg:        req.SendMsg,
-				ReliabilityLevel: *req.ReliabilityLevel,
-				UnreadCount:      false,
-			}, nil),
+			MsgFrom:         constant.SysMsgType,
+			ContentType:     constant.BusinessNotification,
+			SessionType:     sessionType,
+			CreateTime:      payload.CreatedAt,
+			ClientMsgID:     idutil.GetMsgIDByMD5(req.SendUserID + req.RecvUserID + req.RecvGroupID + payload.DedupeKey + payload.Summary),
+			Options:         options,
+			OfflinePushInfo: offlinePushInfo,
+			Ex:              detail,
 		},
 	}
 	respPb, err := m.Client.SendMsg(c, &sendMsgReq)

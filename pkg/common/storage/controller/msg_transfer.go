@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/openimsdk/open-im-server/v3/pkg/common/convert"
+	"github.com/openimsdk/open-im-server/v3/pkg/msgprocessor"
 	"github.com/openimsdk/protocol/constant"
 	"github.com/openimsdk/tools/mq"
 	"github.com/openimsdk/tools/utils/datautil"
@@ -219,6 +220,9 @@ func (db *msgTransferDatabase) BatchInsertChat2Cache(ctx context.Context, conver
 		currentMaxSeq++
 		m.Seq = currentMaxSeq
 		userSeqMap[m.SendID] = m.Seq
+		if !msgprocessor.Options(m.Options).IsUnreadCount() && m.RecvID != "" {
+			userSeqMap[m.RecvID] = m.Seq
+		}
 		seqs = append(seqs, m.Seq)
 	}
 	msgToDB := func(msg *sdkws.MsgData) *model.MsgInfoModel {
