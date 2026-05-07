@@ -1,85 +1,106 @@
-# Business Notification Real Conversations
+# Message-Level Notification Controls
 
-## Send API
+## Responsibility Boundary
 
-`POST /msg/send_business_notification` sends a structured business notification as an OpenIM message.
+OpenIM only provides generic message capabilities. Business meaning, system sender accounts, payload schema, routing, dedupe, expiry, and notification settings are owned by the business system and frontend.
 
-Required:
+Use:
 
-- `recvUserID` or `recvGroupID`: exactly one receiver target.
-- `businessType` or `channel`: one of `system`, `prop`, `group_notification`, `social_like`, `social_comment`, `social_follow`, `group_post`.
-- `title`
-- `summary`
+- `POST /msg/send_msg` for real notification conversations.
+- `POST /msg/send_business_notification` for realtime business notifications that do not necessarily create conversation messages.
 
-Optional:
+## Real Notification Conversations
 
-- `sendUserID`: defaults by channel when omitted.
-- `subType`: for `prop`, use `prop_use`, `prop_acquire`, or `prop_expire`.
-- `entityId`, `actorUserId`, `route`, `createdAt`, `dedupeKey`, `payloadData`
-- `countUnread`: defaults to `true`; set `false` to save the message and update the conversation preview without increasing unread.
-- `offlinePush`: defaults to `true`; set `false` to suppress offline push.
-- `senderNickname`, `senderFaceURL`, `offlinePushInfo`
+Business services should call `POST /msg/send_msg` with a system account as `sendID` when the goal is to create or update a real user conversation.
 
-The message content is a `NotificationElem` whose `detail` is:
+Example:
 
 ```json
 {
-  "payload": {
-    "businessType": "prop",
-    "subType": "prop_use",
-    "entityId": "123",
-    "actorUserId": "456",
-    "title": "Prop used",
-    "summary": "Someone used a prop",
-    "route": "PropNotifications",
-    "createdAt": 1710000000000,
-    "dedupeKey": "prop:123",
-    "data": {}
+  "recvID": "10001",
+  "sendID": "6",
+  "sessionType": 1,
+  "contentType": 110,
+  "content": {
+    "data": "{\"type\":\"notification_event\",\"title\":\"Notification title\"}",
+    "description": "custom notification",
+    "extension": "{\"route\":\"NotificationPage\"}"
   },
-  "delivery": {
-    "countUnread": true,
-    "offlinePush": true
-  }
+  "countUnread": false,
+  "notOfflinePush": true,
+  "offlinePushInfo": {
+    "title": "Notification title",
+    "desc": "Notification summary",
+    "ex": "{}"
+  },
+  "ex": "{\"type\":\"notification_event\"}"
 }
 ```
 
-## Channel Sender IDs
+### `/msg/send_msg` Controls
 
-- `system`: `2`
-- `prop`: `6`
-- `group_notification`: `7`
-- `social_like`: `8`
-- `social_comment`: `9`
-- `social_follow`: `10`
-- `group_post`: `11`
+- `countUnread`: optional. If omitted or `true`, unread behaves normally. If `false`, the message is persisted and updates the conversation preview, but the receiver's unread count does not increase.
+- `notOfflinePush`: existing field. If `true`, the message is persisted but does not trigger offline push.
+- `content`: passed through according to `contentType`; use custom message (`contentType=110`) when the business system and frontend own the payload schema.
+- `sendID`: can be a system account if that account exists and has permission to send.
 
-These IDs preserve the existing system/prop behavior while giving new notification channels stable real conversations.
+## Realtime Business Notifications
 
-## Prop Subtype Muting
+`POST /msg/send_business_notification` remains a generic business notification endpoint.
 
-The prop conversation remains a single real OpenIM notification conversation. Business services should read the user's prop notification settings before calling OpenIM:
+Use it for:
 
-- Disabled subtype: send with `countUnread=false` and `offlinePush=false`.
-- Enabled subtype: send with `countUnread=true` and `offlinePush=true`.
+- prop animations
+- client realtime callbacks
+- effects that should not necessarily create a conversation message
+- `sendMsg=false` scenarios
 
-Messages for disabled subtypes are still persisted, so the latest conversation preview can show them. The server advances the receiver's read seq for `countUnread=false` single/notification messages so the saved message does not increase unread.
+Example:
 
-## Frontend Follow-Up Points
+```json
+{
+  "sendUserID": "1",
+  "recvUserID": "10001",
+  "key": "SINGLE_PROP_ACTION",
+  "data": "{\"propId\":123}",
+  "sendMsg": false
+}
+```
 
-Do these in the Flutter project, not in this repository:
+Optional controls:
 
-- Parse `latestMsg.notificationElem.detail` or `latestMsg.ex` for `payload.businessType`, falling back to sender IDs for compatibility.
-- Route real notification conversations by `businessType`: `system`, `prop`, `group_notification`, `social_like`, `social_comment`, `social_follow`, `group_post`.
-- Replace virtual group notification summary once `group_notification` is produced by backend.
-- Keep existing `userID == '2'` and `userID == '6'` fallbacks during migration.
-- For prop notification settings, call the business settings API for the three subtype switches instead of OpenIM `setConversationMuted`.
-- Remove `/api/v1/prop-notifications?includeUnsent=true` fallback after all prop notifications are written through OpenIM.
+- `sendMsg`: whether this notification should also produce a stored message.
+- `countUnread`: applies only when `sendMsg=true`.
+- `offlinePush`: applies only when push is desired for this notification path.
+
+This endpoint does not define business channels, system sender IDs, routes, or frontend display behavior.
+
+## Business System Responsibilities
+
+The business system must decide:
+
+- which system account sends each real conversation message
+- payload format for `content` and `ex`
+- whether a message counts unread
+- whether a message triggers offline push
+- dedupe and expiry behavior
+- group approval state and repeated request handling
+
+## Frontend Responsibilities
+
+The frontend must decide:
+
+- which sender IDs receive special display
+- how to parse custom message payloads
+- which page to open on tap
+- how to render title, avatar, and preview
+- how to fetch latest approval state for group approval flows
 
 ## Verification Checklist
 
-- New `system`, `prop`, social, group notification, and group post notifications create visible real conversations.
+- `/msg/send_msg` with a system `sendID` creates or updates a real single conversation.
 - `countUnread=false` messages are saved and become latest preview but do not increase conversation or total unread.
-- `offlinePush=false` messages do not generate offline push.
-- `countUnread=true` messages behave like normal unread notification messages.
+- `notOfflinePush=true` messages do not generate offline push.
+- `countUnread=true` or omitted behaves like a normal unread message.
 - Deleting a notification conversation hides it, and a later notification recreates/reappears it.
-- Login sync and pull-to-refresh return the same notification conversations without virtual fallback.
+- `/msg/send_business_notification` with `sendMsg=false` continues to work for realtime callback scenarios.
