@@ -63,8 +63,12 @@ func GetOptionsByNotification(cfg NotificationConfig, sendMessage *bool) msgproc
 	if sendMessage != nil {
 		cfg.IsSendMsg = *sendMessage
 	}
+	// When the notification is delivered as a real message (IsSendMsg), whether it
+	// increases the receiver's unread count is controlled by the per-notification
+	// UnreadCount config. This lets group system tips (e.g. member quit/kicked)
+	// stay visible in the message stream without bumping the unread badge.
 	if cfg.IsSendMsg {
-		opts = msgprocessor.WithOptions(opts, msgprocessor.WithUnreadCount(true))
+		opts = msgprocessor.WithOptions(opts, msgprocessor.WithUnreadCount(cfg.UnreadCount))
 	}
 	if cfg.OfflinePush.Enable {
 		opts = msgprocessor.WithOptions(opts, msgprocessor.WithOfflinePush(true))

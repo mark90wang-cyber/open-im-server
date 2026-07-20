@@ -2,7 +2,10 @@ groupCreated:
   isSendMsg: true
 # Deprecated. Fixed as 1.
   reliabilityLevel: 1
-# Deprecated. Fixed as false.
+# Whether this notification increases the receiver's unread count when it is
+# delivered as a real message (isSendMsg=true). Group system tips keep it false
+# so they stay visible in the message stream without bumping the unread badge.
+# Note: the effective value is enforced in InitNotification at startup.
   unreadCount: false
 # Configuration for offline push notifications.
   offlinePush:

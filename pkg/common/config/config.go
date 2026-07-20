@@ -177,10 +177,15 @@ type OfflinePushConfig struct {
 }
 
 type NotificationConfig struct {
-	IsSendMsg        bool              `yaml:"isSendMsg"`
-	ReliabilityLevel int               `yaml:"reliabilityLevel"`
-	UnreadCount      bool              `yaml:"unreadCount"`
-	OfflinePush      OfflinePushConfig `yaml:"offlinePush"`
+	IsSendMsg        bool `yaml:"isSendMsg"`
+	ReliabilityLevel int  `yaml:"reliabilityLevel"`
+	// UnreadCount controls whether this notification, when delivered as a real
+	// message (IsSendMsg=true), increases the receiver's unread count. The
+	// effective value is set in InitNotification (which overrides the yaml value
+	// at startup); group system tips keep it false so they stay visible in the
+	// message stream without bumping the unread badge.
+	UnreadCount bool              `yaml:"unreadCount"`
+	OfflinePush OfflinePushConfig `yaml:"offlinePush"`
 }
 
 type Notification struct {
