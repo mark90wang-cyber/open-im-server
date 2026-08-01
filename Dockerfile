@@ -1,5 +1,5 @@
-# Use Go 1.22 Alpine as the base image for building the application
-FROM golang:1.22-alpine AS builder
+# Use Go 1.25 Alpine as the base image for building the application
+FROM golang:1.25-alpine AS builder
 
 # Define the base directory for the application as an environment variable
 ENV SERVER_DIR=/openim-server
@@ -10,19 +10,21 @@ WORKDIR $SERVER_DIR
 # Set the Go proxy to improve dependency resolution speed
 # ENV GOPROXY=https://goproxy.io,direct
 
+# Install Mage first (cached independently of source code changes)
+RUN go install github.com/magefile/mage@v1.15.0
+
 # Copy all files from the current directory into the container
 COPY . .
 
-RUN go mod download
-
-# Install Mage to use for building the application
-RUN go install github.com/magefile/mage@v1.15.0
+# Use vendor directory if present, otherwise download dependencies
+RUN if [ -d "vendor" ]; then echo "Using vendor directory"; else go mod download; fi
+ENV GOFLAGS=-mod=vendor
 
 # Optionally build your application if needed
 RUN mage build
 
 # Using Alpine Linux with Go environment for the final image
-FROM golang:1.22-alpine
+FROM golang:1.25-alpine
 
 # Install necessary packages, such as bash
 RUN apk add --no-cache bash
@@ -43,7 +45,8 @@ COPY --from=builder $SERVER_DIR/start-config.yml $SERVER_DIR/
 COPY --from=builder $SERVER_DIR/go.mod $SERVER_DIR/
 COPY --from=builder $SERVER_DIR/go.sum $SERVER_DIR/
 
-RUN go get github.com/openimsdk/gomake@v0.0.15-alpha.5
+# Remove local replace directive (only needed at build time) before go get
+RUN sed -i '/^replace /d' go.mod && go get github.com/openimsdk/gomake@v0.0.17
 
 # Set the command to run when the container starts
 ENTRYPOINT ["sh", "-c", "mage start && tail -f /dev/null"]

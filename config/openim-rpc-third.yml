@@ -19,7 +19,7 @@ prometheus:
 
 object:
   # Use MinIO as object storage, or set to "cos", "oss", "kodo", "aws", while also configuring the corresponding settings
-  enable: minio
+  enable: aws
   cos:
     bucketURL: https://temp-1252357374.cos.ap-chengdu.myqcloud.com
     secretID: 
@@ -43,9 +43,10 @@ object:
     sessionToken: 
     publicRead: false
   aws:
-    region: ap-southeast-2
-    bucket: testdemo832234
+    region: us-east-1
+    bucket: vt-flarewild-media-prod
     accessKeyID:
     secretAccessKey:
     sessionToken:
     publicRead: false
+    cloudFrontURL: https://media.flarewild.com

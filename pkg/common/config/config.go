@@ -341,6 +341,7 @@ type Aws struct {
 	AccessKeyID     string `mapstructure:"accessKeyID"`
 	SecretAccessKey string `mapstructure:"secretAccessKey"`
 	SessionToken    string `mapstructure:"sessionToken"`
+	CloudFrontURL   string `mapstructure:"cloudFrontURL"`
 }
 
 type User struct {
@@ -597,6 +598,7 @@ func (o *Aws) Build() *aws.Config {
 		AccessKeyID:     o.AccessKeyID,
 		SecretAccessKey: o.SecretAccessKey,
 		SessionToken:    o.SessionToken,
+		CloudFrontURL:   o.CloudFrontURL,
 	}
 }
 
