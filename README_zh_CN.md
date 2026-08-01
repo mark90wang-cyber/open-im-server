@@ -140,3 +140,26 @@
 <a href="https://github.com/openimsdk/open-im-server/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=openimsdk/open-im-server" />
 </a>
+
+
+
+## 本地docker desktop部署
+cd /home/mark_/workspace/open-im-server
+go mod vendor
+docker build -t openim-server:local .
+docker images | grep openim-server
+cd /mnt/c/Users/mark_/Desktop/installed/deployed/openim-docker/openim-docker
+docker compose up -d --no-deps --force-recreate openim-server
+
+## AWS docker部署
+
+cd /home/mark_/workspace/open-im-server
+
+go mod vendor
+
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 608291746647.dkr.ecr.us-east-1.amazonaws.com
+
+docker buildx build \
+  --platform linux/arm64 \
+  -t 608291746647.dkr.ecr.us-east-1.amazonaws.com/vt/openim-server:v3.8.3-flarewild1.0.2 \
+  --push .
