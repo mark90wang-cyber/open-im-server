@@ -50,6 +50,10 @@ type SendMsg struct {
 	// NotOfflinePush specifies if the message should not trigger offline push notifications.
 	NotOfflinePush bool `json:"notOfflinePush"`
 
+	// CountUnread controls whether this message increases the receiver's unread count.
+	// If omitted, OpenIM keeps the default behavior and counts unread normally.
+	CountUnread *bool `json:"countUnread"`
+
 	// SendTime is a timestamp indicating when the message was sent.
 	SendTime int64 `json:"sendTime"`
 

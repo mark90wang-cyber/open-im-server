@@ -20,7 +20,7 @@ import (
 	"github.com/mitchellh/mapstructure"
 	"github.com/openimsdk/open-im-server/v3/pkg/apistruct"
 	"github.com/openimsdk/open-im-server/v3/pkg/authverify"
-	"github.com/openimsdk/open-im-server/v3/pkg/common/config"
+	"github.com/openimsdk/open-im-server/v3/pkg/msgprocessor"
 	"github.com/openimsdk/open-im-server/v3/pkg/rpcli"
 	"github.com/openimsdk/protocol/constant"
 	"github.com/openimsdk/protocol/msg"
@@ -29,7 +29,6 @@ import (
 	"github.com/openimsdk/tools/apiresp"
 	"github.com/openimsdk/tools/errs"
 	"github.com/openimsdk/tools/log"
-	"github.com/openimsdk/tools/mcontext"
 	"github.com/openimsdk/tools/utils/datautil"
 	"github.com/openimsdk/tools/utils/idutil"
 	"github.com/openimsdk/tools/utils/jsonutil"
@@ -82,6 +81,9 @@ func (m *MessageApi) newUserSendMsgReq(_ *gin.Context, params *apistruct.SendMsg
 	}
 	if params.NotOfflinePush {
 		datautil.SetSwitchFromOptions(options, constant.IsOfflinePush, false)
+	}
+	if params.CountUnread != nil {
+		datautil.SetSwitchFromOptions(options, constant.IsUnreadCount, *params.CountUnread)
 	}
 	pbData := msg.SendMsgReq{
 		MsgData: &sdkws.MsgData{
@@ -248,40 +250,78 @@ func (m *MessageApi) SendMessage(c *gin.Context) {
 
 func (m *MessageApi) SendBusinessNotification(c *gin.Context) {
 	req := struct {
-		Key        string `json:"key"`
-		Data       string `json:"data"`
-		SendUserID string `json:"sendUserID" binding:"required"`
-		RecvUserID string `json:"recvUserID" binding:"required"`
+		Key              string                 `json:"key"`
+		Data             string                 `json:"data"`
+		SendUserID       string                 `json:"sendUserID" binding:"required"`
+		RecvUserID       string                 `json:"recvUserID"`
+		RecvGroupID      string                 `json:"recvGroupID"`
+		SendMsg          bool                   `json:"sendMsg"`
+		ReliabilityLevel *int                   `json:"reliabilityLevel"`
+		CountUnread      *bool                  `json:"countUnread"`
+		OfflinePush      *bool                  `json:"offlinePush"`
+		OfflinePushInfo  *sdkws.OfflinePushInfo `json:"offlinePushInfo"`
 	}{}
 	if err := c.BindJSON(&req); err != nil {
 		apiresp.GinError(c, errs.ErrArgs.WithDetail(err.Error()).Wrap())
 		return
 	}
-
+	if req.RecvUserID == "" && req.RecvGroupID == "" {
+		apiresp.GinError(c, errs.ErrArgs.WrapMsg("recvUserID and recvGroupID cannot be empty at the same time"))
+		return
+	}
+	if req.RecvUserID != "" && req.RecvGroupID != "" {
+		apiresp.GinError(c, errs.ErrArgs.WrapMsg("recvUserID and recvGroupID cannot be set at the same time"))
+		return
+	}
 	if !authverify.IsAppManagerUid(c, m.imAdminUserID) {
 		apiresp.GinError(c, errs.ErrNoPermission.WrapMsg("only app manager can send message"))
 		return
 	}
+	countUnread := true
+	if req.CountUnread != nil {
+		countUnread = *req.CountUnread
+	}
+	offlinePush := true
+	if req.OfflinePush != nil {
+		offlinePush = *req.OfflinePush
+	}
+
+	var sessionType int32
+	if req.RecvUserID != "" {
+		sessionType = constant.SingleChatType
+	} else {
+		sessionType = constant.ReadGroupChatType
+	}
+	options := msgprocessor.NewOptions()
+	options = msgprocessor.WithOptions(
+		options,
+		msgprocessor.WithSendMsg(req.SendMsg),
+		msgprocessor.WithHistory(true),
+		msgprocessor.WithPersistent(),
+		msgprocessor.WithUnreadCount(countUnread),
+		msgprocessor.WithOfflinePush(offlinePush),
+	)
+	if req.ReliabilityLevel != nil && *req.ReliabilityLevel == constant.UnreliableNotification {
+		options = msgprocessor.WithOptions(options, msgprocessor.WithHistory(false))
+	}
 	sendMsgReq := msg.SendMsgReq{
 		MsgData: &sdkws.MsgData{
-			SendID: req.SendUserID,
-			RecvID: req.RecvUserID,
+			SendID:  req.SendUserID,
+			RecvID:  req.RecvUserID,
+			GroupID: req.RecvGroupID,
 			Content: []byte(jsonutil.StructToJsonString(&sdkws.NotificationElem{
 				Detail: jsonutil.StructToJsonString(&struct {
 					Key  string `json:"key"`
 					Data string `json:"data"`
 				}{Key: req.Key, Data: req.Data}),
 			})),
-			MsgFrom:     constant.SysMsgType,
-			ContentType: constant.BusinessNotification,
-			SessionType: constant.SingleChatType,
-			CreateTime:  timeutil.GetCurrentTimestampByMill(),
-			ClientMsgID: idutil.GetMsgIDByMD5(mcontext.GetOpUserID(c)),
-			Options: config.GetOptionsByNotification(config.NotificationConfig{
-				IsSendMsg:        false,
-				ReliabilityLevel: 1,
-				UnreadCount:      false,
-			}, nil),
+			MsgFrom:         constant.SysMsgType,
+			ContentType:     constant.BusinessNotification,
+			SessionType:     sessionType,
+			CreateTime:      timeutil.GetCurrentTimestampByMill(),
+			ClientMsgID:     idutil.GetMsgIDByMD5(req.SendUserID + req.RecvUserID + req.RecvGroupID + req.Key + req.Data),
+			Options:         options,
+			OfflinePushInfo: req.OfflinePushInfo,
 		},
 	}
 	respPb, err := m.Client.SendMsg(c, &sendMsgReq)

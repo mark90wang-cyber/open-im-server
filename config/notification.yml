@@ -326,3 +326,14 @@ conversationSetPrivate:
     title: burn after reading
     desc: burn after reading
     ext: burn after reading
+
+#####################business#########################
+businessNotification:
+  isSendMsg: true
+  reliabilityLevel: 1
+  unreadCount: true
+  offlinePush:
+    enable: true
+    title: business notification
+    desc: business notification
+    ext: business notification
