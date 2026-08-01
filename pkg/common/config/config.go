@@ -129,10 +129,14 @@ type OfflinePushConfig struct {
 }
 
 type NotificationConfig struct {
-	IsSendMsg        bool              `mapstructure:"isSendMsg"`
-	ReliabilityLevel int               `mapstructure:"reliabilityLevel"`
-	UnreadCount      bool              `mapstructure:"unreadCount"`
-	OfflinePush      OfflinePushConfig `mapstructure:"offlinePush"`
+	IsSendMsg        bool `mapstructure:"isSendMsg"`
+	ReliabilityLevel int  `mapstructure:"reliabilityLevel"`
+	// UnreadCount controls whether this notification, when delivered as a real
+	// message (IsSendMsg=true), increases the receiver's unread count. Group
+	// system tips keep it false so they stay visible in the message stream
+	// without bumping the unread badge.
+	UnreadCount bool              `mapstructure:"unreadCount"`
+	OfflinePush OfflinePushConfig `mapstructure:"offlinePush"`
 }
 
 type Notification struct {
