@@ -181,6 +181,7 @@ type CallbackBeforeInviteUserToGroupReq struct {
 	GroupID         string   `json:"groupID"`
 	Reason          string   `json:"reason"`
 	InvitedUserIDs  []string `json:"invitedUserIDs"`
+	InviterUserID   string   `json:"inviterUserID"`
 }
 type CallbackBeforeInviteUserToGroupResp struct {
 	CommonCallbackResp

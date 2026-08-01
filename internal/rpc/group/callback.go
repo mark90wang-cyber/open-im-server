@@ -257,6 +257,7 @@ func (s *groupServer) webhookBeforeInviteUserToGroup(ctx context.Context, before
 			GroupID:         req.GroupID,
 			Reason:          req.Reason,
 			InvitedUserIDs:  req.InvitedUserIDs,
+			InviterUserID:   mcontext.GetOpUserID(ctx),
 		}
 
 		resp := &callbackstruct.CallbackBeforeInviteUserToGroupResp{}
